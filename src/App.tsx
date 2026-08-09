@@ -17,8 +17,10 @@ import { motion, AnimatePresence } from "motion/react";
 import React, { useState, useEffect } from "react";
 import { BlurText } from "./components/BlurText";
 import { HLSVideo } from "./components/HLSVideo";
+import { LazyVideo } from "./components/LazyVideo";
 import { ArtPiece } from "./components/ArtPiece";
 import { Terminal } from "./components/Terminal";
+import { useInView } from "./hooks/useInView";
 import { cn } from "./lib/utils";
 
 // --- Components ---
@@ -236,6 +238,7 @@ const Hero = () => {
         loop
         muted
         playsInline
+        preload='metadata'
       />
 
       {/* Overlays */}
@@ -373,12 +376,18 @@ const ArtSection = () => {
 };
 
 const DataHasChanged = () => {
+  const [ref, isVisible] = useInView<HTMLElement>({ rootMargin: "200px" });
+
   return (
-    <section className='relative min-h-[700px] w-full py-32 px-6 md:px-16 lg:px-24 flex items-center justify-center overflow-hidden'>
+    <section
+      ref={ref}
+      className='relative min-h-[700px] w-full py-32 px-6 md:px-16 lg:px-24 flex items-center justify-center overflow-hidden'
+    >
       {/* Background HLS Video */}
       <HLSVideo
         src='https://stream.mux.com/9JXDljEVWYwWu01PUkAemafDugK89o01BR6zqJ3aS9u00A.m3u8'
         className='absolute inset-0 w-full h-full object-cover z-0'
+        isVisible={isVisible}
       />
 
       {/* Fades */}
@@ -470,13 +479,9 @@ const CapabilitiesChess = () => {
           </div>
           <div className='flex-1 w-full'>
             <div className='liquid-glass rounded-2xl overflow-hidden aspect-video relative border border-white/10 shadow-2xl group/video'>
-              <video
+              <LazyVideo
                 src='https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260217_030345_246c0224-10a4-422c-b324-070b7c0eceda.mp4'
                 className='w-full h-full object-cover opacity-90 group-hover/video:scale-105 transition-transform duration-700'
-                autoPlay
-                loop
-                muted
-                playsInline
               />
               <div className='absolute inset-0 bg-black/40 pointer-events-none' />
               <div className='absolute inset-0 flex items-center justify-center p-8 text-center pointer-events-none'>
@@ -651,12 +656,15 @@ const TerminalSection = () => {
 };
 
 const Mission = () => {
+  const [ref, isVisible] = useInView<HTMLElement>({ rootMargin: "200px" });
+
   return (
-    <section className='relative py-32 px-6 overflow-hidden'>
+    <section ref={ref} className='relative py-32 px-6 overflow-hidden'>
       <HLSVideo
         src='https://stream.mux.com/NcU3HlHeF7CUL86azTTzpy3Tlb00d6iF3BmCdFslMJYM.m3u8'
         className='absolute inset-0 w-full h-full object-cover z-0'
         style={{ filter: "saturate(0)" }}
+        isVisible={isVisible}
       />
 
       <div className='absolute top-0 left-0 right-0 h-[200px] bg-gradient-to-b from-black to-transparent z-[1]' />
@@ -1006,11 +1014,14 @@ const Contact = () => {
 };
 
 const Footer = () => {
+  const [ref, isVisible] = useInView<HTMLElement>({ rootMargin: "200px" });
+
   return (
-    <section className='relative py-32 px-6 overflow-hidden mt-24'>
+    <section ref={ref} className='relative py-32 px-6 overflow-hidden mt-24'>
       <HLSVideo
         src='https://stream.mux.com/8wrHPCX2dC3msyYU9ObwqNdm00u3ViXvOSHUMRYSEe5Q.m3u8'
         className='absolute inset-0 w-full h-full object-cover z-0'
+        isVisible={isVisible}
       />
 
       <div className='absolute top-0 left-0 right-0 h-[200px] bg-gradient-to-b from-black to-transparent z-[1]' />

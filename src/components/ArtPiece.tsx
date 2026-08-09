@@ -6,15 +6,51 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 interface ArtPieceProps {
   className?: string;
+  /** Disable on mobile to prevent crashes */
+  disableOnMobile?: boolean;
 }
 
-export const ArtPiece = ({ className }: ArtPieceProps) => {
+export const ArtPiece = ({
+  className,
+  disableOnMobile = true,
+}: ArtPieceProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<
+    "loading" | "ready" | "error" | "mobile"
+  >("loading");
+  const [isVisible, setIsVisible] = useState(false);
 
+  // Detect mobile
   useEffect(() => {
+    if (!disableOnMobile) return;
+    const check = () => {
+      const isMobile = window.innerWidth < 768 || "ontouchstart" in window;
+      if (isMobile) setStatus("mobile");
+    };
+    check();
+  }, [disableOnMobile]);
+
+  // IntersectionObserver: only init when in view
+  useEffect(() => {
+    if (status === "mobile") return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { threshold: 0.05, rootMargin: "100px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [status]);
+
+  // Main Three.js setup
+  useEffect(() => {
+    if (status === "mobile") return;
+    if (!isVisible) return;
+
     const container = containerRef.current;
     if (!container) return;
 
@@ -35,7 +71,6 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
       const h = Math.max(rect.height, 400);
 
       if (w === 0 || h === 0) {
-        console.warn("ArtPiece: container has zero dimensions", rect);
         setStatus("error");
         return;
       }
@@ -50,9 +85,10 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
       const renderer = new THREE.WebGLRenderer({
         antialias: true,
         alpha: false,
+        powerPreference: "low-power", // save battery on mobile
       });
       renderer.setSize(w, h);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // cap DPR
       renderer.domElement.style.display = "block";
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
@@ -86,7 +122,7 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
       dirLight.position.set(5, 10, 5);
       scene.add(dirLight);
 
-      // ─── Ping-Pong Blob (with DISPOSE) ──────────────────────────────────
+      // ─── Ping-Pong Blob ─────────────────────────────────────────────────
       class Blob {
         renderer: any;
         rtRead: any;
@@ -186,7 +222,6 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
           this.uniforms.aspect.value = w / h;
         }
 
-        // 🔥 CRITICAL: Dispose GPU resources
         dispose() {
           this.rtRead.dispose();
           this.rtWrite.dispose();
@@ -286,7 +321,6 @@ if (blobData.r < 0.01) discard;
           helmet.position.set(0, 1.5, 0.75);
           scene.add(helmet);
 
-          // Wireframe
           const wireGeo = new THREE.WireframeGeometry(helmet.geometry);
           const wireMat = new THREE.LineBasicMaterial({
             color: 0x000000,
@@ -317,14 +351,9 @@ if (blobData.r < 0.01) discard;
       cleanupFns.push(() => {
         cancelAnimationFrame(rafId);
         cancelled = true;
-
-        // Dispose controls
         controls.dispose();
-
-        // Dispose blob (render targets + material + geometry)
         blob.dispose();
 
-        // Dispose scene objects
         scene.traverse((object) => {
           if (object.geometry) object.geometry.dispose();
           if (object.material) {
@@ -336,11 +365,9 @@ if (blobData.r < 0.01) discard;
           }
         });
 
-        // Dispose renderer and force context loss
         renderer.dispose();
         renderer.forceContextLoss();
 
-        // Remove canvas from DOM
         if (renderer.domElement.parentNode) {
           renderer.domElement.parentNode.removeChild(renderer.domElement);
         }
@@ -351,7 +378,23 @@ if (blobData.r < 0.01) discard;
       clearTimeout(initTimeout);
       cleanupFns.forEach((fn) => fn());
     };
-  }, []);
+  }, [isVisible, status]);
+
+  if (status === "mobile") {
+    return (
+      <div
+        ref={containerRef}
+        className={`relative w-full h-full min-h-[400px] flex items-center justify-center bg-neutral-100 rounded-2xl ${className || ""}`}
+      >
+        <div className='text-center px-6'>
+          <p className='text-neutral-500 text-sm font-medium'>Digital Craft</p>
+          <p className='text-neutral-400 text-xs mt-1'>
+            Interactive 3D experience available on desktop
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

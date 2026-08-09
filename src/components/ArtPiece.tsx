@@ -1,5 +1,8 @@
 // @ts-nocheck
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 interface ArtPieceProps {
   className?: string;
@@ -7,53 +10,62 @@ interface ArtPieceProps {
 
 export const ArtPiece = ({ className }: ArtPieceProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    // Give React a tick to render the container with proper dimensions
+    const initTimeout = setTimeout(() => {
+      initScene();
+    }, 100);
+
     let cancelled = false;
     const cleanupFns: Array<() => void> = [];
 
-    (async () => {
-      const THREE = await import("three");
-      const { OrbitControls } =
-        await import("three/examples/jsm/controls/OrbitControls.js");
-      const { GLTFLoader } =
-        await import("three/examples/jsm/loaders/GLTFLoader.js");
+    function initScene() {
+      const el = containerRef.current;
+      if (!el || cancelled) return;
 
-      if (cancelled || !container) return;
+      const rect = el.getBoundingClientRect();
+      const w = Math.max(rect.width, 300);
+      const h = Math.max(rect.height, 400);
 
-      const getSize = () => ({
-        w: container.clientWidth || window.innerWidth,
-        h: container.clientHeight || window.innerHeight,
-      });
-
-      const { w, h } = getSize();
       if (w === 0 || h === 0) {
-        console.warn("ArtPiece: container has zero dimensions", { w, h });
+        console.warn("ArtPiece: container has zero dimensions", rect);
+        setStatus("error");
         return;
       }
 
-      console.log("ArtPiece: initializing", { w, h });
+      console.log("ArtPiece: init", { w, h });
 
-      // ─── Scene Setup ────────────────────────────────────────────────────
+      // ─── Scene ──────────────────────────────────────────────────────────
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0xf5f5f7);
 
       const camera = new THREE.PerspectiveCamera(30, w / h, 1, 100);
       camera.position.set(-1, 0, 0).setLength(15);
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: false,
+      });
       renderer.setSize(w, h);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      container.appendChild(renderer.domElement);
       renderer.domElement.style.display = "block";
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
+      el.appendChild(renderer.domElement);
 
+      // ─── Resize ─────────────────────────────────────────────────────────
       const handleResize = () => {
-        const { w: nw, h: nh } = getSize();
+        if (!containerRef.current) return;
+        const r = containerRef.current.getBoundingClientRect();
+        const nw = Math.max(r.width, 300);
+        const nh = Math.max(r.height, 400);
         if (nw === 0 || nh === 0) return;
         camera.aspect = nw / nh;
         camera.updateProjectionMatrix();
@@ -76,9 +88,7 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
       dirLight.position.set(5, 10, 5);
       scene.add(dirLight);
 
-      // ─── Ping-Pong Blob (framebuffer feedback) ──────────────────────────
-      // Uses two render targets instead of copyFramebufferToTexture
-      // This is the reliable, standard approach for feedback loops.
+      // ─── Ping-Pong Blob ─────────────────────────────────────────────────
       class Blob {
         renderer: any;
         rtRead: any;
@@ -134,7 +144,6 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
               void main() {
                 float duration = pointerDuration;
                 float rVal = texture2D(prevFrame, vUv).r;
-
                 rVal -= clamp(dTime / duration, 0.0, 0.1);
                 rVal = clamp(rVal, 0.0, 1.0);
 
@@ -161,19 +170,15 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
         render(dt: number) {
           this.uniforms.dTime.value = dt;
           this.uniforms.prevFrame.value = this.rtRead.texture;
-
           this.renderer.setRenderTarget(this.rtWrite);
           this.renderer.render(this.rtScene, this.rtCamera);
           this.renderer.setRenderTarget(null);
-
-          // Swap
           const temp = this.rtRead;
           this.rtRead = this.rtWrite;
           this.rtWrite = temp;
         }
 
         getTexture() {
-          // Return the texture that was JUST written to (now in rtRead after swap)
           return this.rtRead.texture;
         }
 
@@ -188,7 +193,7 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
 
       // Pointer events
       const onPointerMove = (e: PointerEvent) => {
-        const rect = container.getBoundingClientRect();
+        const rect = el.getBoundingClientRect();
         blob.uniforms.pointer.value.x =
           ((e.clientX - rect.left) / rect.width) * 2 - 1;
         blob.uniforms.pointer.value.y =
@@ -198,172 +203,158 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
         blob.uniforms.pointer.value.setScalar(10);
       };
 
-      container.addEventListener("pointermove", onPointerMove);
+      el.addEventListener("pointermove", onPointerMove);
       renderer.domElement.addEventListener("pointerleave", onPointerLeave);
       cleanupFns.push(() => {
-        container.removeEventListener("pointermove", onPointerMove);
+        el.removeEventListener("pointermove", onPointerMove);
         renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
       });
 
-      // ─── Models ─────────────────────────────────────────────────────────
+      // ─── Load Models ────────────────────────────────────────────────────
       const loader = new GLTFLoader();
-      let hasVisibleModel = false;
-
-      // Load taban.glb
-      try {
-        const gltf = await loader.loadAsync("/taban.glb");
-        const head = gltf.scene.children[0];
-        if (head && head.geometry) {
-          head.geometry.rotateY(Math.PI * 0.01);
-          head.scale.setScalar(4.724);
-          head.position.set(0.226, -0.569, 0.63);
-          scene.add(head);
-          hasVisibleModel = true;
-          console.log("ArtPiece: taban.glb loaded successfully");
-        }
-      } catch (err) {
-        console.warn("ArtPiece: /taban.glb not found or failed to load", err);
-      }
-
-      // Load helmet
       let helmet: any = null;
-      try {
-        const gltf = await loader.loadAsync(
-          "https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf",
-        );
-        helmet = gltf.scene.children[0];
+      let head: any = null;
+
+      Promise.allSettled([
+        // Try taban.glb
+        new Promise<void>((resolve) => {
+          loader.load(
+            "/taban.glb",
+            (gltf) => {
+              const h = gltf.scene.children[0];
+              if (h && h.geometry) {
+                h.geometry.rotateY(Math.PI * 0.01);
+                h.scale.setScalar(4.724);
+                h.position.set(0.226, -0.569, 0.63);
+                scene.add(h);
+                head = h;
+                console.log("ArtPiece: taban.glb loaded");
+              }
+              resolve();
+            },
+            undefined,
+            (err) => {
+              console.warn("ArtPiece: taban.glb failed", err);
+              resolve();
+            },
+          );
+        }),
+        // Try helmet
+        new Promise<void>((resolve) => {
+          loader.load(
+            "https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf",
+            (gltf) => {
+              helmet = gltf.scene.children[0];
+              if (helmet && helmet.material) {
+                console.log("ArtPiece: helmet loaded");
+              }
+              resolve();
+            },
+            undefined,
+            (err) => {
+              console.warn("ArtPiece: helmet failed", err);
+              resolve();
+            },
+          );
+        }),
+      ]).then(() => {
+        if (cancelled) return;
+
+        // Setup helmet with blob reveal
         if (helmet && helmet.material) {
-          hasVisibleModel = true;
-          console.log("ArtPiece: helmet loaded successfully");
-        }
-      } catch (err) {
-        console.warn("ArtPiece: helmet failed to load", err);
-      }
+          const helmetUniforms = { texBlob: { value: blob.getTexture() } };
 
-      if (helmet && helmet.material) {
-        const helmetUniforms = { texBlob: { value: blob.getTexture() } };
+          helmet.material.onBeforeCompile = (shader: any) => {
+            shader.uniforms.texBlob = helmetUniforms.texBlob;
+            shader.vertexShader = `
+              varying vec4 vPosProj;
+              ${shader.vertexShader}
+            `.replace(
+              `#include <project_vertex>`,
+              `#include <project_vertex>
+vPosProj = gl_Position;
+`,
+            );
+            shader.fragmentShader = `
+              uniform sampler2D texBlob;
+              varying vec4 vPosProj;
+              ${shader.fragmentShader}
+            `.replace(
+              `#include <color_fragment>`,
+              `vec2 blobUV = ((vPosProj.xy / vPosProj.w) + 1.0) * 0.5;
+vec4 blobData = texture2D(texBlob, blobUV);
+if (blobData.r < 0.01) discard;
+#include <color_fragment>
+`,
+            );
+          };
 
-        helmet.material.onBeforeCompile = (shader: any) => {
-          shader.uniforms.texBlob = helmetUniforms.texBlob;
+          helmet.scale.setScalar(3.5);
+          helmet.position.set(0, 1.5, 0.75);
+          scene.add(helmet);
 
-          shader.vertexShader = `
-            varying vec4 vPosProj;
-            ${shader.vertexShader}
-          `.replace(
-            `#include <project_vertex>`,
-            `#include <project_vertex>
-            vPosProj = gl_Position;
-            `,
-          );
-
-          shader.fragmentShader = `
-            uniform sampler2D texBlob;
-            varying vec4 vPosProj;
-            ${shader.fragmentShader}
-          `.replace(
-            `#include <color_fragment>`,
-            `
-            vec2 blobUV = ((vPosProj.xy / vPosProj.w) + 1.0) * 0.5;
-            vec4 blobData = texture2D(texBlob, blobUV);
-            if (blobData.r < 0.01) discard;
-            #include <color_fragment>
-            `,
-          );
-        };
-
-        helmet.scale.setScalar(3.5);
-        helmet.position.set(0, 1.5, 0.75);
-        scene.add(helmet);
-
-        // Wireframe overlay
-        const helmetWire = new THREE.Mesh(
-          helmet.geometry.clone().rotateX(Math.PI * 0.5),
-          new THREE.MeshBasicMaterial({
+          // Wireframe
+          const wireGeo = helmet.geometry.clone().rotateX(Math.PI * 0.5);
+          const wireMat = new THREE.MeshBasicMaterial({
             color: 0x444444,
             wireframe: true,
             transparent: true,
-            opacity: 0.4,
-            onBeforeCompile: (shader: any) => {
-              shader.uniforms.time = { value: 0 };
+            opacity: 0.35,
+          });
+          const wire = new THREE.Mesh(wireGeo, wireMat);
+          wire.scale.setScalar(3.5);
+          wire.position.set(0, 1.5, 0.75);
+          scene.add(wire);
+        }
 
-              shader.vertexShader = `
-                varying float vYVal;
-                ${shader.vertexShader}
-              `.replace(
-                `#include <project_vertex>`,
-                `#include <project_vertex>
-                vYVal = position.y;
-                `,
-              );
+        setStatus("ready");
+      });
 
-              shader.fragmentShader = `
-                uniform float time;
-                varying float vYVal;
-                ${shader.fragmentShader}
-              `.replace(
-                `#include <color_fragment>`,
-                `#include <color_fragment>
-                float y = fract(vYVal * 0.25 + time * 0.5);
-                float fY = smoothstep(0.0, 0.01, y) - smoothstep(0.02, 0.1, y);
-                diffuseColor.a *= fY * 0.9 + 0.1;
-                `,
-              );
-            },
-          }),
-        );
-        helmetWire.scale.setScalar(3.5);
-        helmetWire.position.set(0, 1.5, 0.75);
-        scene.add(helmetWire);
-      }
-
-      // ─── Fallback: always-visible wireframe shape ───────────────────────
+      // ─── Fallback geometry (always visible) ─────────────────────────────
       const fallbackGroup = new THREE.Group();
-      const fallbackGeo = new THREE.IcosahedronGeometry(2.5, 1);
-      const fallbackMat = new THREE.MeshBasicMaterial({
-        color: 0x666666,
-        wireframe: true,
-        transparent: true,
-        opacity: 0.3,
-      });
-      const fallbackMesh = new THREE.Mesh(fallbackGeo, fallbackMat);
-      fallbackMesh.position.set(0, 1, 0);
-      fallbackGroup.add(fallbackMesh);
 
-      // Inner glowing core
-      const coreGeo = new THREE.IcosahedronGeometry(1.2, 0);
-      const coreMat = new THREE.MeshBasicMaterial({
-        color: 0x999999,
+      const icoGeo = new THREE.IcosahedronGeometry(2.2, 1);
+      const icoMat = new THREE.MeshBasicMaterial({
+        color: 0x555555,
         wireframe: true,
         transparent: true,
-        opacity: 0.15,
+        opacity: 0.25,
       });
-      const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-      coreMesh.position.set(0, 1, 0);
-      fallbackGroup.add(coreMesh);
+      const ico = new THREE.Mesh(icoGeo, icoMat);
+      ico.position.set(0, 1, 0);
+      fallbackGroup.add(ico);
+
+      const coreGeo = new THREE.IcosahedronGeometry(1.0, 0);
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0x888888,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.12,
+      });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      core.position.set(0, 1, 0);
+      fallbackGroup.add(core);
 
       scene.add(fallbackGroup);
 
       // ─── Render Loop ────────────────────────────────────────────────────
       const clock = new THREE.Clock();
-      let t = 0;
 
       renderer.setAnimationLoop(() => {
+        if (cancelled) return;
         const dt = clock.getDelta();
-        t += dt;
 
         controls.update();
         blob.render(dt);
 
-        // Update helmet uniform every frame
-        if (helmet && helmet.material) {
+        if (helmet && helmet.material && helmet.material.uniforms) {
           helmet.material.uniforms.texBlob.value = blob.getTexture();
         }
 
-        // Animate fallback
-        fallbackMesh.rotation.y += 0.003;
-        fallbackMesh.rotation.x += 0.002;
-        coreMesh.rotation.y -= 0.005;
-        coreMesh.rotation.z += 0.002;
+        ico.rotation.y += 0.003;
+        ico.rotation.x += 0.002;
+        core.rotation.y -= 0.005;
+        core.rotation.z += 0.002;
 
         renderer.render(scene, camera);
       });
@@ -374,16 +365,15 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
         renderer.dispose();
         blob.rtRead.dispose();
         blob.rtWrite.dispose();
-        if (renderer.domElement.parentElement === container) {
-          container.removeChild(renderer.domElement);
+        if (renderer.domElement.parentElement === el) {
+          el.removeChild(renderer.domElement);
         }
       });
-
-      console.log("ArtPiece: render loop started");
-    })();
+    }
 
     return () => {
       cancelled = true;
+      clearTimeout(initTimeout);
       cleanupFns.forEach((fn) => fn());
     };
   }, []);
@@ -395,10 +385,46 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
       style={{
         width: "100%",
         height: "100%",
-        minHeight: "300px",
+        minHeight: "400px",
         position: "relative",
         display: "block",
+        background: "#f5f5f7",
       }}
-    />
+    >
+      {status === "loading" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "monospace",
+            fontSize: "12px",
+            color: "#999",
+            zIndex: 10,
+          }}
+        >
+          Loading 3D scene...
+        </div>
+      )}
+      {status === "error" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "monospace",
+            fontSize: "12px",
+            color: "#c00",
+            zIndex: 10,
+          }}
+        >
+          3D scene failed to initialize. Check console.
+        </div>
+      )}
+    </div>
   );
 };

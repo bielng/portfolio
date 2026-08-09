@@ -114,16 +114,30 @@ const Button = ({
 
 // --- Sections ---
 
-const Logo = ({ className }: { className?: string }) => (
+/**const Logo = ({ className }: { className?: string }) => (
   <a href='#' className={cn("flex items-center gap-2 sm:gap-3", className)}>
     <div className='w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-2xl'>
       <span
         className='font-heading font-semibold text-black text-sm sm:text-base italic'
         style={{ fontFamily: "'Instrument Serif', serif" }}
       >
-        {/*TN*/}
+        *TN*
       </span>
     </div>
+    <div className='flex flex-col leading-none'>
+      <span className='font-body font-bold text-white text-lg sm:text-xl tracking-tight'>
+        Taban Ngunar
+      </span>
+      <span className='font-body font-light text-white/50 text-[7px] sm:text-[9px] uppercase tracking-[0.3em]'>
+        Data · Cloud · Impact
+      </span>
+    </div>
+  </a>
+);
+**/
+
+const Logo = ({ className }: { className?: string }) => (
+  <a href='#' className={cn("flex items-center gap-2 sm:gap-3", className)}>
     <div className='flex flex-col leading-none'>
       <span className='font-body font-bold text-white text-lg sm:text-xl tracking-tight'>
         Taban Ngunar

@@ -18,6 +18,7 @@ import React, { useState, useEffect } from "react";
 import { BlurText } from "./components/BlurText";
 import { HLSVideo } from "./components/HLSVideo";
 import { ArtPiece } from "./components/ArtPiece";
+import { Terminal } from "./components/Terminal";
 import { cn } from "./lib/utils";
 
 // --- Components ---
@@ -509,6 +510,24 @@ const About = () => {
   );
 };
 
+const TerminalSection = () => {
+  return (
+    <section className="py-24 px-6 md:px-16 lg:px-24 max-w-5xl mx-auto">
+      <div className="mb-12 text-center">
+        <Badge>Try It Out</Badge>
+        <SectionHeading className="mt-4">Poke around my terminal.</SectionHeading>
+        <p className="text-white/60 font-body font-light text-lg mt-6 max-w-2xl mx-auto leading-relaxed">
+          Type <span className="text-white font-medium">help</span> to see what it can do —
+          or try <span className="text-white font-medium">about</span>,{" "}
+          <span className="text-white font-medium">projects</span>, or{" "}
+          <span className="text-white font-medium">contact</span>.
+        </p>
+      </div>
+      <Terminal />
+    </section>
+  );
+};
+
 const Mission = () => {
   return (
     <section className="relative py-32 px-6 overflow-hidden">
@@ -835,6 +854,7 @@ export default function App() {
         <CapabilitiesChess />
         <Expertise />
         <About />
+        <TerminalSection />
         <Mission />
         <Projects />
         <Contact />

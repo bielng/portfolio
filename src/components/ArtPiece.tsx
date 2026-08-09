@@ -18,13 +18,13 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Give React a tick to render the container with proper dimensions
     const initTimeout = setTimeout(() => {
       initScene();
     }, 100);
 
     let cancelled = false;
     const cleanupFns: Array<() => void> = [];
+    let rafId = 0;
 
     function initScene() {
       const el = containerRef.current;
@@ -39,8 +39,6 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
         setStatus("error");
         return;
       }
-
-      console.log("ArtPiece: init", { w, h });
 
       // ─── Scene ──────────────────────────────────────────────────────────
       const scene = new THREE.Scene();
@@ -88,7 +86,7 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
       dirLight.position.set(5, 10, 5);
       scene.add(dirLight);
 
-      // ─── Ping-Pong Blob ─────────────────────────────────────────────────
+      // ─── Ping-Pong Blob (with DISPOSE) ──────────────────────────────────
       class Blob {
         renderer: any;
         rtRead: any;
@@ -187,6 +185,14 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
           this.rtWrite.setSize(w, h);
           this.uniforms.aspect.value = w / h;
         }
+
+        // 🔥 CRITICAL: Dispose GPU resources
+        dispose() {
+          this.rtRead.dispose();
+          this.rtWrite.dispose();
+          this.material.dispose();
+          this.rtScene.geometry.dispose();
+        }
       }
 
       const blob = new Blob(renderer, w, h);
@@ -216,7 +222,6 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
       let head: any = null;
 
       Promise.allSettled([
-        // Try taban.glb
         new Promise<void>((resolve) => {
           loader.load(
             "/taban.glb",
@@ -228,39 +233,27 @@ export const ArtPiece = ({ className }: ArtPieceProps) => {
                 h.position.set(0.226, -0.569, 0.63);
                 scene.add(h);
                 head = h;
-                console.log("ArtPiece: taban.glb loaded");
               }
               resolve();
             },
             undefined,
-            (err) => {
-              console.warn("ArtPiece: taban.glb failed", err);
-              resolve();
-            },
+            () => resolve(),
           );
         }),
-        // Try helmet
         new Promise<void>((resolve) => {
           loader.load(
             "https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf",
             (gltf) => {
               helmet = gltf.scene.children[0];
-              if (helmet && helmet.material) {
-                console.log("ArtPiece: helmet loaded");
-              }
               resolve();
             },
             undefined,
-            (err) => {
-              console.warn("ArtPiece: helmet failed", err);
-              resolve();
-            },
+            () => resolve(),
           );
         }),
       ]).then(() => {
         if (cancelled) return;
 
-        // Setup helmet with blob reveal
         if (helmet && helmet.material) {
           const helmetUniforms = { texBlob: { value: blob.getTexture() } };
 
@@ -294,85 +287,67 @@ if (blobData.r < 0.01) discard;
           scene.add(helmet);
 
           // Wireframe
-          const wireGeo = helmet.geometry.clone().rotateX(Math.PI * 0.5);
-          const wireMat = new THREE.MeshBasicMaterial({
-            color: 0x444444,
-            wireframe: true,
+          const wireGeo = new THREE.WireframeGeometry(helmet.geometry);
+          const wireMat = new THREE.LineBasicMaterial({
+            color: 0x000000,
             transparent: true,
-            opacity: 0.35,
+            opacity: 0.15,
           });
-          const wire = new THREE.Mesh(wireGeo, wireMat);
-          wire.scale.setScalar(3.5);
-          wire.position.set(0, 1.5, 0.75);
-          scene.add(wire);
+          const wireframe = new THREE.LineSegments(wireGeo, wireMat);
+          helmet.add(wireframe);
         }
 
         setStatus("ready");
       });
 
-      // ─── Fallback geometry (always visible) ─────────────────────────────
-      const fallbackGroup = new THREE.Group();
-
-      const icoGeo = new THREE.IcosahedronGeometry(2.2, 1);
-      const icoMat = new THREE.MeshBasicMaterial({
-        color: 0x555555,
-        wireframe: true,
-        transparent: true,
-        opacity: 0.25,
-      });
-      const ico = new THREE.Mesh(icoGeo, icoMat);
-      ico.position.set(0, 1, 0);
-      fallbackGroup.add(ico);
-
-      const coreGeo = new THREE.IcosahedronGeometry(1.0, 0);
-      const coreMat = new THREE.MeshBasicMaterial({
-        color: 0x888888,
-        wireframe: true,
-        transparent: true,
-        opacity: 0.12,
-      });
-      const core = new THREE.Mesh(coreGeo, coreMat);
-      core.position.set(0, 1, 0);
-      fallbackGroup.add(core);
-
-      scene.add(fallbackGroup);
-
-      // ─── Render Loop ────────────────────────────────────────────────────
+      // ─── Animation Loop ─────────────────────────────────────────────────
       const clock = new THREE.Clock();
 
-      renderer.setAnimationLoop(() => {
+      const animate = () => {
         if (cancelled) return;
-        const dt = clock.getDelta();
-
+        rafId = requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.1);
         controls.update();
         blob.render(dt);
-
-        if (helmet && helmet.material && helmet.material.uniforms) {
-          helmet.material.uniforms.texBlob.value = blob.getTexture();
-        }
-
-        ico.rotation.y += 0.003;
-        ico.rotation.x += 0.002;
-        core.rotation.y -= 0.005;
-        core.rotation.z += 0.002;
-
         renderer.render(scene, camera);
-      });
+      };
+      animate();
 
+      // 🔥 CRITICAL: Comprehensive cleanup
       cleanupFns.push(() => {
-        renderer.setAnimationLoop(null);
+        cancelAnimationFrame(rafId);
+        cancelled = true;
+
+        // Dispose controls
         controls.dispose();
+
+        // Dispose blob (render targets + material + geometry)
+        blob.dispose();
+
+        // Dispose scene objects
+        scene.traverse((object) => {
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach((m) => m.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        });
+
+        // Dispose renderer and force context loss
         renderer.dispose();
-        blob.rtRead.dispose();
-        blob.rtWrite.dispose();
-        if (renderer.domElement.parentElement === el) {
-          el.removeChild(renderer.domElement);
+        renderer.forceContextLoss();
+
+        // Remove canvas from DOM
+        if (renderer.domElement.parentNode) {
+          renderer.domElement.parentNode.removeChild(renderer.domElement);
         }
       });
     }
 
     return () => {
-      cancelled = true;
       clearTimeout(initTimeout);
       cleanupFns.forEach((fn) => fn());
     };
@@ -381,48 +356,16 @@ if (blobData.r < 0.01) discard;
   return (
     <div
       ref={containerRef}
-      className={className}
-      style={{
-        width: "100%",
-        height: "100%",
-        minHeight: "400px",
-        position: "relative",
-        display: "block",
-        background: "#f5f5f7",
-      }}
+      className={`relative w-full h-full min-h-[400px] ${className || ""}`}
     >
       {status === "loading" && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "monospace",
-            fontSize: "12px",
-            color: "#999",
-            zIndex: 10,
-          }}
-        >
-          Loading 3D scene...
+        <div className='absolute inset-0 flex items-center justify-center text-sm text-neutral-400'>
+          Loading 3D scene…
         </div>
       )}
       {status === "error" && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "monospace",
-            fontSize: "12px",
-            color: "#c00",
-            zIndex: 10,
-          }}
-        >
-          3D scene failed to initialize. Check console.
+        <div className='absolute inset-0 flex items-center justify-center text-sm text-red-400'>
+          Failed to initialize 3D scene
         </div>
       )}
     </div>

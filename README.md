@@ -53,6 +53,13 @@ Copy `.env.example` to `.env` and fill in values as needed:
 cp .env.example .env
 ```
 
+| Variable         | Purpose                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY` | Only needed if you wire up a Gemini API integration later. Not currently used by any component. |
+| `APP_URL`        | Self-referential URL, useful if you add OAuth callbacks or server-side links later.             |
+
+`.env` is git-ignored; `.env.example` is tracked and safe to commit.
+
 ## Project structure
 
 ```
@@ -96,7 +103,7 @@ cp .env.example .env
 
 ## Performance & Mobile Optimizations
 
-This portfolio is heavily media-rich (5 video players + Three.js WebGL). The following optimizations keep it fast and stable:
+This portfolio is heavily media-rich (5 video players + Three.js WebGL). The following optimizations keep it fast and stable across all devices:
 
 ### Lazy Loading
 
@@ -109,12 +116,25 @@ This portfolio is heavily media-rich (5 video players + Three.js WebGL). The fol
 - Videos automatically **pause** when scrolled off-screen and **resume** when visible again.
 - This prevents mobile browsers from exhausting their limited concurrent video decoder slots (typically 1–2).
 
-### Three.js GPU Safety
+### Three.js Adaptive Rendering
 
-- **Mobile fallback** — `ArtPiece` detects touch devices and screens < 768px, showing a graceful placeholder instead of initializing WebGL.
-- **GPU memory cleanup** — `Blob.dispose()` properly releases `WebGLRenderTarget`s, shader materials, and geometry buffers on unmount.
-- **Power preference** — Renderer uses `powerPreference: "low-power"` to reduce GPU clock on mobile.
-- **DPR cap** — Pixel ratio capped at `1.5` to prevent retina screens from over-rendering.
+The `ArtPiece` component automatically detects device capability and adjusts quality in real time:
+
+| Tier     | Screen     | RAM     | Cores | DPR   | Blob Res | FPS  | Antialias | Wireframe |
+| -------- | ---------- | ------- | ----- | ----- | -------- | ---- | --------- | --------- |
+| **Low**  | `< 480px`  | `< 2GB` | `< 4` | `0.5` | `0.5x`   | `30` | ❌ No     | ❌ No     |
+| **Mid**  | `< 1024px` | `< 4GB` | `< 6` | `1.0` | `0.75x`  | `30` | ✅ Yes    | ✅ Yes    |
+| **High** | `≥ 1024px` | `≥ 4GB` | `≥ 6` | `1.5` | `1.0x`   | `60` | ✅ Yes    | ✅ Yes    |
+
+Key behaviors:
+
+- **Never blocks mobile** — works on phones, tablets, and desktop
+- **Frame-capped animation** — 30fps on low/mid devices, 60fps on high-end
+- **Pause on scroll-away** — render loop pauses when off-screen, canvas stays alive
+- **Pause on tab switch** — respects `visibilitychange` to save battery
+- **Debounced resize** — `ResizeObserver` with 200ms debounce prevents render target spam
+- **GPU memory cleanup** — `Blob.dispose()` properly releases `WebGLRenderTarget`s, shader materials, and geometry buffers on unmount
+- **No zoom/pan on touch** — `OrbitControls` restricted to orbit-only to avoid scroll conflicts
 
 ### HLS Memory Tuning
 
@@ -136,24 +156,24 @@ It was adapted from a standalone HTML/JS sketch into a React component:
 - Cleans up its renderer, event listeners, and animation loop on unmount
 - Uses `// @ts-nocheck` — the shader string-patching (`onBeforeCompile`) doesn't type-check cleanly against Three.js's public types, so this file opts out of strict checking rather than fighting the compiler over untyped shader internals
 
-### Mobile Behavior
-
-On mobile/touch devices, the 3D scene is replaced with a static placeholder:
+### Lifecycle
 
 ```
-┌─────────────────────────────┐
-│                             │
-│      Digital Craft          │
-│  Interactive 3D experience  │
-│   available on desktop      │
-│                             │
-└─────────────────────────────┘
+Mount → Build scene → Start rAF loop
+  ↓
+Scroll away → Pause loop (canvas stays, GPU idle)
+  ↓
+Scroll back → Resume loop instantly (no rebuild)
+  ↓
+Switch tab → Pause loop
+  ↓
+Switch back → Resume loop
+  ↓
+Unmount page → Full dispose (only now)
 ```
-
-This avoids GPU thermal throttling and WebGL context loss on low-end devices.
 
 ## Notes
 
 - The contact form currently simulates a submission (a `setTimeout` + success state) — it doesn't send a real email yet. Wire it up to an email service or backend endpoint before relying on it for real inquiries.
 - Background videos (Hero, Mission, Footer, "Data Has Changed") point to your own Mux/CloudFront assets — replace the URLs in `App.tsx` if those change.
-- If you experience crashes on older mobile devices, check that `disableOnMobile` is `true` on `ArtPiece` and that HLS videos are using the `isVisible` prop.
+- If you experience crashes on older mobile devices, the adaptive tier system should automatically downscale quality. You can manually adjust tier thresholds in `ArtPiece.tsx` by editing the `getDeviceTier()` function.

@@ -1,81 +1,118 @@
 // @ts-nocheck
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 interface ArtPieceProps {
   className?: string;
-  /** Disable on mobile to prevent crashes */
-  disableOnMobile?: boolean;
+  /** Disable on small phones only (not tablets) */
+  disableOnPhone?: boolean;
 }
 
 export const ArtPiece = ({
   className,
-  disableOnMobile = true,
+  disableOnPhone = true,
 }: ArtPieceProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<
-    "loading" | "ready" | "error" | "mobile"
-  >("loading");
-  const [isVisible, setIsVisible] = useState(false);
+  const [status, setStatus] = useState<"loading" | "ready" | "error" | "phone">(
+    "loading",
+  );
 
-  // Detect mobile
+  // These refs survive re-renders and let us pause/resume without destroying
+  const sceneRef = useRef<{
+    renderer: THREE.WebGLRenderer;
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    controls: OrbitControls;
+    blob: any;
+    clock: THREE.Clock;
+    helmet: any;
+    head: any;
+    rafId: number;
+    cancelled: boolean;
+    animating: boolean;
+    cleanupFns: Array<() => void>;
+  } | null>(null);
+
+  // ─── 1. Detect phones (NOT tablets) ───────────────────────────────────
   useEffect(() => {
-    if (!disableOnMobile) return;
-    const check = () => {
-      const isMobile = window.innerWidth < 768 || "ontouchstart" in window;
-      if (isMobile) setStatus("mobile");
+    if (!disableOnPhone) return;
+
+    const checkPhone = () => {
+      const width = window.innerWidth;
+      const coarsePointer =
+        window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+      const isPhone = width < 640 && coarsePointer;
+      if (isPhone) setStatus("phone");
     };
-    check();
-  }, [disableOnMobile]);
 
-  // IntersectionObserver: only init when in view
+    checkPhone();
+    window.addEventListener("resize", checkPhone);
+    return () => window.removeEventListener("resize", checkPhone);
+  }, [disableOnPhone]);
+
+  // ─── 2. Visibility observer: pause/resume animation ───────────────────
   useEffect(() => {
-    if (status === "mobile") return;
+    if (status === "phone") return;
+
     const el = containerRef.current;
     if (!el) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setIsVisible(entry.isIntersecting);
+        const s = sceneRef.current;
+        if (!s) return;
+
+        if (entry.isIntersecting) {
+          // Resume
+          if (!s.animating) {
+            s.animating = true;
+            s.clock = new THREE.Clock(); // reset delta to avoid jump
+            animate();
+          }
+        } else {
+          // Pause (DON'T destroy)
+          s.animating = false;
+          cancelAnimationFrame(s.rafId);
+        }
       },
       { threshold: 0.05, rootMargin: "100px" },
     );
+
     observer.observe(el);
     return () => observer.disconnect();
   }, [status]);
 
-  // Main Three.js setup
+  // ─── 3. Build scene once, keep alive until unmount ────────────────────
   useEffect(() => {
-    if (status === "mobile") return;
-    if (!isVisible) return;
+    if (status === "phone") return;
 
     const container = containerRef.current;
     if (!container) return;
 
+    // Already built? Don't rebuild
+    if (sceneRef.current) return;
+
     const initTimeout = setTimeout(() => {
       initScene();
-    }, 100);
-
-    let cancelled = false;
-    const cleanupFns: Array<() => void> = [];
-    let rafId = 0;
+    }, 50);
 
     function initScene() {
       const el = containerRef.current;
-      if (!el || cancelled) return;
+      if (!el || sceneRef.current) return;
 
       const rect = el.getBoundingClientRect();
       const w = Math.max(rect.width, 300);
       const h = Math.max(rect.height, 400);
 
       if (w === 0 || h === 0) {
+        console.warn("ArtPiece: container has zero dimensions", rect);
         setStatus("error");
         return;
       }
 
-      // ─── Scene ──────────────────────────────────────────────────────────
+      // ─── Scene ──────────────────────────────────────────────────────
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0xf5f5f7);
 
@@ -85,18 +122,18 @@ export const ArtPiece = ({
       const renderer = new THREE.WebGLRenderer({
         antialias: true,
         alpha: false,
-        powerPreference: "low-power", // save battery on mobile
+        powerPreference: "low-power",
       });
       renderer.setSize(w, h);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // cap DPR
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.domElement.style.display = "block";
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
       el.appendChild(renderer.domElement);
 
-      // ─── Resize ─────────────────────────────────────────────────────────
+      // ─── Resize ─────────────────────────────────────────────────────
       const handleResize = () => {
-        if (!containerRef.current) return;
+        if (!containerRef.current || !sceneRef.current) return;
         const r = containerRef.current.getBoundingClientRect();
         const nw = Math.max(r.width, 300);
         const nh = Math.max(r.height, 400);
@@ -104,25 +141,24 @@ export const ArtPiece = ({
         camera.aspect = nw / nh;
         camera.updateProjectionMatrix();
         renderer.setSize(nw, nh);
-        blob.setSize(nw, nh);
+        sceneRef.current.blob.setSize(nw, nh);
       };
       window.addEventListener("resize", handleResize);
-      cleanupFns.push(() => window.removeEventListener("resize", handleResize));
 
-      // ─── Controls ───────────────────────────────────────────────────────
+      // ─── Controls ───────────────────────────────────────────────────
       const camShift = new THREE.Vector3(0, 1, 0);
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.object.position.add(camShift);
       controls.target.add(camShift);
 
-      // ─── Lights ─────────────────────────────────────────────────────────
+      // ─── Lights ───────────────────────────────────────────────────
       scene.add(new THREE.AmbientLight(0xffffff, 1.5));
       const dirLight = new THREE.DirectionalLight(0xffffff, 3);
       dirLight.position.set(5, 10, 5);
       scene.add(dirLight);
 
-      // ─── Ping-Pong Blob ─────────────────────────────────────────────────
+      // ─── Ping-Pong Blob ───────────────────────────────────────────
       class Blob {
         renderer: any;
         rtRead: any;
@@ -134,17 +170,14 @@ export const ArtPiece = ({
 
         constructor(renderer: any, width: number, height: number) {
           this.renderer = renderer;
-
           const rtOptions = {
             minFilter: THREE.LinearFilter,
             magFilter: THREE.LinearFilter,
             format: THREE.RGBAFormat,
             type: THREE.UnsignedByteType,
           };
-
           this.rtRead = new THREE.WebGLRenderTarget(width, height, rtOptions);
           this.rtWrite = new THREE.WebGLRenderTarget(width, height, rtOptions);
-
           this.uniforms = {
             pointer: { value: new THREE.Vector2().setScalar(10) },
             pointerDown: { value: 1 },
@@ -154,33 +187,23 @@ export const ArtPiece = ({
             prevFrame: { value: this.rtRead.texture },
             dTime: { value: 0 },
           };
-
           this.material = new THREE.ShaderMaterial({
             uniforms: this.uniforms,
             vertexShader: `
               varying vec2 vUv;
-              void main() {
-                vUv = uv;
-                gl_Position = vec4(position.xy, 0.0, 1.0);
-              }
+              void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
             `,
             fragmentShader: `
               precision mediump float;
               varying vec2 vUv;
-              uniform float dTime;
-              uniform float aspect;
+              uniform float dTime, aspect, pointerDown, pointerRadius, pointerDuration;
               uniform vec2 pointer;
-              uniform float pointerDown;
-              uniform float pointerRadius;
-              uniform float pointerDuration;
               uniform sampler2D prevFrame;
-
               void main() {
                 float duration = pointerDuration;
                 float rVal = texture2D(prevFrame, vUv).r;
                 rVal -= clamp(dTime / duration, 0.0, 0.1);
                 rVal = clamp(rVal, 0.0, 1.0);
-
                 float f = 0.0;
                 if (pointerDown > 0.5) {
                   vec2 uv = (vUv - 0.5) * 2.0 * vec2(aspect, 1.0);
@@ -193,7 +216,6 @@ export const ArtPiece = ({
               }
             `,
           });
-
           this.rtScene = new THREE.Mesh(
             new THREE.PlaneGeometry(2, 2),
             this.material,
@@ -246,12 +268,8 @@ export const ArtPiece = ({
 
       el.addEventListener("pointermove", onPointerMove);
       renderer.domElement.addEventListener("pointerleave", onPointerLeave);
-      cleanupFns.push(() => {
-        el.removeEventListener("pointermove", onPointerMove);
-        renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
-      });
 
-      // ─── Load Models ────────────────────────────────────────────────────
+      // ─── Load Models ──────────────────────────────────────────────
       const loader = new GLTFLoader();
       let helmet: any = null;
       let head: any = null;
@@ -287,40 +305,29 @@ export const ArtPiece = ({
           );
         }),
       ]).then(() => {
-        if (cancelled) return;
+        if (!sceneRef.current) return; // unmounted while loading
 
         if (helmet && helmet.material) {
           const helmetUniforms = { texBlob: { value: blob.getTexture() } };
-
           helmet.material.onBeforeCompile = (shader: any) => {
             shader.uniforms.texBlob = helmetUniforms.texBlob;
-            shader.vertexShader = `
-              varying vec4 vPosProj;
-              ${shader.vertexShader}
-            `.replace(
-              `#include <project_vertex>`,
-              `#include <project_vertex>
-vPosProj = gl_Position;
-`,
-            );
-            shader.fragmentShader = `
-              uniform sampler2D texBlob;
-              varying vec4 vPosProj;
-              ${shader.fragmentShader}
-            `.replace(
-              `#include <color_fragment>`,
-              `vec2 blobUV = ((vPosProj.xy / vPosProj.w) + 1.0) * 0.5;
+            shader.vertexShader =
+              `varying vec4 vPosProj; ${shader.vertexShader}`.replace(
+                `#include <project_vertex>`,
+                `#include <project_vertex>\nvPosProj = gl_Position;\n`,
+              );
+            shader.fragmentShader =
+              `uniform sampler2D texBlob; varying vec4 vPosProj; ${shader.fragmentShader}`.replace(
+                `#include <color_fragment>`,
+                `vec2 blobUV = ((vPosProj.xy / vPosProj.w) + 1.0) * 0.5;
 vec4 blobData = texture2D(texBlob, blobUV);
 if (blobData.r < 0.01) discard;
-#include <color_fragment>
-`,
-            );
+#include <color_fragment>\n`,
+              );
           };
-
           helmet.scale.setScalar(3.5);
           helmet.position.set(0, 1.5, 0.75);
           scene.add(helmet);
-
           const wireGeo = new THREE.WireframeGeometry(helmet.geometry);
           const wireMat = new THREE.LineBasicMaterial({
             color: 0x000000,
@@ -330,57 +337,85 @@ if (blobData.r < 0.01) discard;
           const wireframe = new THREE.LineSegments(wireGeo, wireMat);
           helmet.add(wireframe);
         }
-
         setStatus("ready");
       });
 
-      // ─── Animation Loop ─────────────────────────────────────────────────
+      // ─── Animation Loop ─────────────────────────────────────────────
       const clock = new THREE.Clock();
 
+      const state = {
+        renderer,
+        scene,
+        camera,
+        controls,
+        blob,
+        clock,
+        helmet,
+        head,
+        rafId: 0,
+        cancelled: false,
+        animating: true,
+        cleanupFns: [] as Array<() => void>,
+      };
+
+      // Register cleanup functions
+      state.cleanupFns.push(() =>
+        window.removeEventListener("resize", handleResize),
+      );
+      state.cleanupFns.push(() =>
+        el.removeEventListener("pointermove", onPointerMove),
+      );
+      state.cleanupFns.push(() =>
+        renderer.domElement.removeEventListener("pointerleave", onPointerLeave),
+      );
+
+      sceneRef.current = state;
+
       const animate = () => {
-        if (cancelled) return;
-        rafId = requestAnimationFrame(animate);
-        const dt = Math.min(clock.getDelta(), 0.1);
-        controls.update();
-        blob.render(dt);
-        renderer.render(scene, camera);
+        const s = sceneRef.current;
+        if (!s || s.cancelled || !s.animating) return;
+        s.rafId = requestAnimationFrame(animate);
+        const dt = Math.min(s.clock.getDelta(), 0.1);
+        s.controls.update();
+        s.blob.render(dt);
+        s.renderer.render(s.scene, s.camera);
       };
       animate();
-
-      // 🔥 CRITICAL: Comprehensive cleanup
-      cleanupFns.push(() => {
-        cancelAnimationFrame(rafId);
-        cancelled = true;
-        controls.dispose();
-        blob.dispose();
-
-        scene.traverse((object) => {
-          if (object.geometry) object.geometry.dispose();
-          if (object.material) {
-            if (Array.isArray(object.material)) {
-              object.material.forEach((m) => m.dispose());
-            } else {
-              object.material.dispose();
-            }
-          }
-        });
-
-        renderer.dispose();
-        renderer.forceContextLoss();
-
-        if (renderer.domElement.parentNode) {
-          renderer.domElement.parentNode.removeChild(renderer.domElement);
-        }
-      });
     }
 
+    // ─── Unmount cleanup (ONLY called when component truly unmounts) ─
     return () => {
       clearTimeout(initTimeout);
-      cleanupFns.forEach((fn) => fn());
-    };
-  }, [isVisible, status]);
+      const s = sceneRef.current;
+      if (!s) return;
 
-  if (status === "mobile") {
+      s.cancelled = true;
+      s.animating = false;
+      cancelAnimationFrame(s.rafId);
+      s.controls.dispose();
+      s.blob.dispose();
+
+      s.scene.traverse((object: any) => {
+        if (object.geometry) object.geometry.dispose();
+        if (object.material) {
+          if (Array.isArray(object.material))
+            object.material.forEach((m: any) => m.dispose());
+          else object.material.dispose();
+        }
+      });
+
+      s.renderer.dispose();
+      s.renderer.forceContextLoss();
+      if (s.renderer.domElement.parentNode) {
+        s.renderer.domElement.parentNode.removeChild(s.renderer.domElement);
+      }
+
+      s.cleanupFns.forEach((fn) => fn());
+      sceneRef.current = null;
+    };
+  }, [status]);
+
+  if (status === "phone") {
     return (
       <div
         ref={containerRef}
@@ -389,7 +424,7 @@ if (blobData.r < 0.01) discard;
         <div className='text-center px-6'>
           <p className='text-neutral-500 text-sm font-medium'>Digital Craft</p>
           <p className='text-neutral-400 text-xs mt-1'>
-            Interactive 3D experience available on desktop
+            Interactive 3D experience available on larger screens
           </p>
         </div>
       </div>

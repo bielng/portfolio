@@ -123,44 +123,50 @@ const WELCOME_BLOCKS: Omit<OutputBlock, "id">[] = [
   {
     kind: "output",
     content: (
-      <div className="text-white">
-        Welcome to Taban Ngunar's terminal.
+      <div className='text-green-400 font-bold tracking-wider'>
+        ▓▓▓ WELCOME TO THE MATRIX ▓▓▓
       </div>
     ),
   },
   {
     kind: "output",
     content: (
-      <div className="text-white/50">
-        Data Scientist &amp; Cloud Engineer · Refugee Tech Advocate
+      <div className='text-green-500/70'>
+        Data Scientist & Cloud Engineer · Refugee Tech Advocate
       </div>
     ),
   },
   {
     kind: "output",
     content: (
-      <div className="text-white/40 mt-1">
-        Type <span className="text-emerald-400">help</span> to see available commands.
+      <div className='text-green-600/50 mt-1'>
+        Type <span className='text-cyan-400 font-bold'>help</span> to see
+        available commands.
       </div>
     ),
   },
 ];
 
 const NeofetchCard = () => (
-  <pre className="whitespace-pre-wrap leading-relaxed">
-    <span className="text-white">taban@portfolio</span>
+  <pre className='whitespace-pre-wrap leading-relaxed'>
+    <span className='text-fuchsia-400'>taban@portfolio</span>
     {"\n"}
-    <span className="text-white/30">----------------</span>
+    <span className='text-green-500/30'>══════════════════════</span>
     {"\n"}
-    <span className="text-white/60">OS:</span> Ubuntu 22.04 LTS
+    <span className='text-cyan-400'>OS:</span>{" "}
+    <span className='text-green-300'>Ubuntu 22.04 LTS</span>
     {"\n"}
-    <span className="text-white/60">Role:</span> Data Scientist &amp; Cloud Engineer
+    <span className='text-cyan-400'>Role:</span>{" "}
+    <span className='text-green-300'>Data Scientist & Cloud Engineer</span>
     {"\n"}
-    <span className="text-white/60">Focus:</span> Data Science, AWS, Refugee Tech
+    <span className='text-cyan-400'>Focus:</span>{" "}
+    <span className='text-green-300'>Data Science, AWS, Refugee Tech</span>
     {"\n"}
-    <span className="text-white/60">Shell:</span> bash 5.1
+    <span className='text-cyan-400'>Shell:</span>{" "}
+    <span className='text-green-300'>bash 5.1</span>
     {"\n"}
-    <span className="text-white/60">Terminal:</span> portfolio-terminal
+    <span className='text-cyan-400'>Terminal:</span>{" "}
+    <span className='text-green-300'>portfolio-terminal</span>
   </pre>
 );
 
@@ -178,7 +184,7 @@ const cowsay = (message: string) => {
 
 export const Terminal = ({ className }: { className?: string }) => {
   const [blocks, setBlocks] = useState<OutputBlock[]>(() =>
-    WELCOME_BLOCKS.map((b) => ({ ...b, id: blockId++ }))
+    WELCOME_BLOCKS.map((b) => ({ ...b, id: blockId++ })),
   );
   const [value, setValue] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -202,10 +208,11 @@ export const Terminal = ({ className }: { className?: string }) => {
     const trimmed = raw.trim();
     push(
       "command",
-      <div className="flex gap-2">
-        <span className="text-emerald-400">taban@portfolio:~$</span>
-        <span className="text-white/90">{trimmed}</span>
-      </div>
+      <div className='flex gap-2'>
+        <span className='text-fuchsia-400'>[root@portfolio]</span>
+        <span className='text-green-400'>~$</span>
+        <span className='text-green-200/90'>{trimmed}</span>
+      </div>,
     );
 
     if (!trimmed) return;
@@ -215,22 +222,52 @@ export const Terminal = ({ className }: { className?: string }) => {
 
     switch (cmd.toLowerCase()) {
       case "help":
-        push("output", <pre className="whitespace-pre-wrap text-white/70">{HELP_TEXT}</pre>);
+        push(
+          "output",
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            {HELP_TEXT}
+          </pre>,
+        );
         break;
       case "about":
-        push("output", <pre className="whitespace-pre-wrap text-white/70">{ABOUT_TEXT}</pre>);
+        push(
+          "output",
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            {ABOUT_TEXT}
+          </pre>,
+        );
         break;
       case "projects":
-        push("output", <pre className="whitespace-pre-wrap text-white/70">{PROJECTS_TEXT}</pre>);
+        push(
+          "output",
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            {PROJECTS_TEXT}
+          </pre>,
+        );
         break;
       case "skills":
-        push("output", <pre className="whitespace-pre-wrap text-white/70">{SKILLS_TEXT}</pre>);
+        push(
+          "output",
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            {SKILLS_TEXT}
+          </pre>,
+        );
         break;
       case "experience":
-        push("output", <pre className="whitespace-pre-wrap text-white/70">{EXPERIENCE_TEXT}</pre>);
+        push(
+          "output",
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            {EXPERIENCE_TEXT}
+          </pre>,
+        );
         break;
       case "contact":
-        push("output", <pre className="whitespace-pre-wrap text-white/70">{CONTACT_TEXT}</pre>);
+        push(
+          "output",
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            {CONTACT_TEXT}
+          </pre>,
+        );
         break;
       case "clear":
       case "cls":
@@ -239,35 +276,55 @@ export const Terminal = ({ className }: { className?: string }) => {
       case "ls":
         push(
           "output",
-          <pre className="whitespace-pre-wrap text-white/70">
-            about/  projects/  skills/  experience/  contact/  README.md
-          </pre>
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            <span className='text-cyan-400'>about/</span>{" "}
+            <span className='text-cyan-400'>projects/</span>{" "}
+            <span className='text-cyan-400'>skills/</span>{" "}
+            <span className='text-cyan-400'>experience/</span>{" "}
+            <span className='text-cyan-400'>contact/</span>{" "}
+            <span className='text-fuchsia-400'>README.md</span>
+          </pre>,
         );
         break;
       case "pwd":
-        push("output", <span className="text-white/70">/home/taban</span>);
+        push("output", <span className='text-green-400/80'>/home/taban</span>);
         break;
       case "whoami":
-        push("output", <span className="text-emerald-400">taban</span>);
+        push(
+          "output",
+          <span className='text-fuchsia-400 font-bold'>taban</span>,
+        );
         break;
       case "date":
-        push("output", <span className="text-white/70">{new Date().toString()}</span>);
+        push(
+          "output",
+          <span className='text-green-400/80'>{new Date().toString()}</span>,
+        );
         break;
       case "echo":
-        push("output", <span className="text-white/70">{args || " "}</span>);
+        push(
+          "output",
+          <span className='text-green-400/80'>{args || " "}</span>,
+        );
         break;
       case "neofetch":
         push("output", <NeofetchCard />);
         break;
       case "cowsay":
-        push("output", <pre className="whitespace-pre-wrap text-white/70">{cowsay(args)}</pre>);
+        push(
+          "output",
+          <pre className='whitespace-pre-wrap text-green-400/80'>
+            {cowsay(args)}
+          </pre>,
+        );
         break;
       default:
         push(
           "output",
-          <span className="text-red-400/80">
-            Command not found: {cmd}. Type 'help' for a list of commands.
-          </span>
+          <span className='text-red-500/90'>
+            [ERROR] Command not found: {cmd}. Type 'help' for a list of
+            commands.
+          </span>,
         );
     }
   };
@@ -287,7 +344,9 @@ export const Terminal = ({ className }: { className?: string }) => {
       e.preventDefault();
       if (history.length === 0) return;
       const nextIndex =
-        historyIndex === -1 ? history.length - 1 : Math.max(0, historyIndex - 1);
+        historyIndex === -1
+          ? history.length - 1
+          : Math.max(0, historyIndex - 1);
       setHistoryIndex(nextIndex);
       setValue(history[nextIndex]);
     } else if (e.key === "ArrowDown") {
@@ -332,61 +391,75 @@ export const Terminal = ({ className }: { className?: string }) => {
       transition={{ duration: 0.6 }}
       viewport={{ once: true }}
       className={cn(
-        "liquid-glass-strong rounded-3xl border border-white/10 overflow-hidden flex flex-col shadow-2xl",
-        className
+        "rounded-lg border border-green-500/30 overflow-hidden flex flex-col shadow-[0_0_30px_rgba(0,255,65,0.1)] bg-black/90",
+        className,
       )}
       onClick={() => inputRef.current?.focus()}
     >
+      {/* CRT Scanline overlay */}
+      <div
+        className='pointer-events-none absolute inset-0 z-10 opacity-[0.03]'
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(0, 255, 65, 0.1) 1px, transparent 1px)",
+          backgroundSize: "100% 3px",
+        }}
+      />
+
       {/* Title bar */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10 bg-white/[0.02]">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
-          <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
-          <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
+      <div className='flex items-center gap-3 px-5 py-3 border-b border-green-500/20 bg-green-900/10'>
+        <div className='flex items-center gap-1.5'>
+          <span className='w-3 h-3 rounded-full bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.6)]' />
+          <span className='w-3 h-3 rounded-full bg-yellow-500/80 shadow-[0_0_8px_rgba(234,179,8,0.6)]' />
+          <span className='w-3 h-3 rounded-full bg-green-500/80 shadow-[0_0_8px_rgba(34,197,94,0.6)]' />
         </div>
-        <div className="flex-1 text-center text-xs text-white/40 font-mono tracking-wide">
-          taban@portfolio — terminal
+        <div className='flex-1 text-center text-xs text-green-400/60 font-mono tracking-widest uppercase'>
+          ◈ taban@portfolio — terminal ◈
         </div>
       </div>
 
       {/* Body */}
       <div
         ref={bodyRef}
-        className="flex-1 overflow-y-auto px-5 py-4 font-mono text-sm leading-relaxed max-h-[420px] min-h-[320px]"
+        className='flex-1 overflow-y-auto px-5 py-4 font-mono text-sm leading-relaxed max-h-[420px] min-h-[320px] relative'
       >
         {blocks.map((b) => (
-          <div key={b.id} className="mb-2.5">
+          <div key={b.id} className='mb-2.5'>
             {b.content}
           </div>
         ))}
 
         {/* Input line */}
-        <form onSubmit={handleSubmit} className="flex items-center gap-2 relative">
-          <span className="text-emerald-400 shrink-0">taban@portfolio:~$</span>
+        <form
+          onSubmit={handleSubmit}
+          className='flex items-center gap-2 relative'
+        >
+          <span className='text-fuchsia-400 shrink-0'>[root@portfolio]</span>
+          <span className='text-green-400 shrink-0'>~$</span>
           <input
             ref={inputRef}
-            type="text"
+            type='text'
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            autoComplete="off"
+            autoComplete='off'
             spellCheck={false}
-            className="flex-1 bg-transparent border-none outline-none text-white/90 font-mono text-sm min-w-0"
-            placeholder="type a command…"
+            className='flex-1 bg-transparent border-none outline-none text-green-300 font-mono text-sm min-w-0 caret-green-400'
+            placeholder='type a command...'
           />
 
           {suggestions.length > 0 && (
-            <div className="absolute left-0 top-full mt-2 liquid-glass rounded-xl border border-white/10 py-1.5 z-20 min-w-[160px]">
+            <div className='absolute left-0 top-full mt-2 bg-black/95 border border-green-500/30 rounded py-1.5 z-20 min-w-[160px] shadow-[0_0_20px_rgba(0,255,65,0.15)]'>
               {suggestions.map((s) => (
                 <button
                   key={s}
-                  type="button"
+                  type='button'
                   onClick={() => {
                     setValue(s);
                     setSuggestions([]);
                     inputRef.current?.focus();
                   }}
-                  className="w-full text-left px-4 py-1 text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+                  className='w-full text-left px-4 py-1 text-green-500/60 hover:text-green-300 hover:bg-green-500/10 transition-colors font-mono'
                 >
                   {s}
                 </button>

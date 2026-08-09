@@ -121,7 +121,7 @@ const Logo = ({ className }: { className?: string }) => (
         className='font-heading font-semibold text-black text-sm sm:text-base italic'
         style={{ fontFamily: "'Instrument Serif', serif" }}
       >
-        TN
+        {/*TN*/}
       </span>
     </div>
     <div className='flex flex-col leading-none'>

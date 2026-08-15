@@ -465,7 +465,7 @@ const CapabilitiesChess = () => {
             <div className='liquid-glass rounded-3xl overflow-hidden aspect-[4/5] xs:aspect-square sm:aspect-video lg:aspect-[4/3] xl:aspect-video relative border border-white/10 shadow-2xl'>
               <div className='w-full h-full bg-[#050505] rounded-2xl overflow-hidden relative'>
                 <img
-                  src='https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2070&auto=format&fit=crop'
+                  src='https://drive.google.com/file/d/1_OB_l_oNecg2p0grYWOHkJkxM2cphC-B/view?usp=sharing'
                   alt='Data pipeline dashboard'
                   className='w-full h-full object-cover opacity-90'
                   referrerPolicy='no-referrer'
